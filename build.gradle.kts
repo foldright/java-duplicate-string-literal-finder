@@ -1,15 +1,9 @@
-import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
-
-
 plugins {
   val kotlinVersion = "2.1.21"
-
-  java
   kotlin("jvm") version kotlinVersion
   kotlin("kapt") version kotlinVersion
+
   application
-  distribution
-  id("com.github.johnrengelman.shadow") version "8.1.1"
 }
 
 group = "io.foldright"
@@ -17,10 +11,10 @@ version = "0.1.0-SNAPSHOT"
 
 repositories { mavenCentral() }
 
-val picocliVersion = "4.7.7"
 dependencies {
   implementation("com.github.javaparser:javaparser-core:3.27.0")
 
+  val picocliVersion = "4.7.7"
   implementation("info.picocli:picocli:$picocliVersion")
   kapt("info.picocli:picocli-codegen:$picocliVersion")
 
@@ -35,21 +29,9 @@ tasks.test { useJUnitPlatform() }
 
 val appName = "jstrdups"
 val mainClassName = "io.foldright.dslf.DuplicateStringLiteralFinder"
-application {
-  applicationName = appName
-  mainClass.set(mainClassName)
-}
+val buildDir: File = layout.buildDirectory.get().asFile
 
-tasks.withType<ShadowJar> {
-  manifest { attributes["Main-Class"] = mainClassName }
-  exclude("META-INF/native-image/")
-  dependencies {
-    exclude(dependency("org.jetbrains:annotations:.*"))
-  }
-}
-
-val taskGenAutoComplete = "genAutoComplete"
-tasks.register<JavaExec>(taskGenAutoComplete) {
+val taskGenAutoComplete by tasks.registering(JavaExec::class) {
   // The module path: typically the runtimeClasspath of your main source set
   classpath = sourceSets["main"].runtimeClasspath
   workingDir = buildDir
@@ -58,21 +40,21 @@ tasks.register<JavaExec>(taskGenAutoComplete) {
 }
 
 distributions {
+  val completionFile: File = buildDir.resolve("${appName}_completion")
   main {
     contents {
-      into("etc/bash_completion.d") {
-        from(buildDir.resolve("${appName}_completion"))
-      }
-      into("zsh/site-functions") {
-        from(buildDir.resolve("${appName}_completion")) {
-          rename { "_$appName" }
-        }
-      }
+      into("etc/bash_completion.d") { from(completionFile) }
+      into("zsh/site-functions") { from(completionFile).rename { "_$appName" } }
     }
   }
 }
 
-tasks.distZip { dependsOn(taskGenAutoComplete) }
-tasks.distTar { dependsOn(taskGenAutoComplete) }
+application {
+  applicationName = appName
+  mainClass = mainClassName
+}
 
-tasks.build { dependsOn(tasks.shadowJar, taskGenAutoComplete) }
+
+arrayOf(tasks.distZip, tasks.distTar).forEach {
+  it { dependsOn(taskGenAutoComplete) }
+}
